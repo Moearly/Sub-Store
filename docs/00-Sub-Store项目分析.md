@@ -891,7 +891,430 @@ function operator(proxies) {
 
 ---
 
-## 八、相关链接
+## 八、节点优化与分流策略
+
+### 8.1 节点过滤规则
+
+#### 正则过滤（保留匹配的节点）
+
+| 场景 | 正则表达式 |
+|------|------------|
+| 只保留香港节点 | `香港\|HK\|Hong Kong\|🇭🇰` |
+| 只保留日本节点 | `日本\|JP\|Japan\|🇯🇵` |
+| 只保留美国节点 | `美国\|US\|United States\|🇺🇸` |
+| 保留亚洲节点 | `香港\|台湾\|日本\|新加坡\|韩国` |
+
+#### 排除过滤（移除匹配的节点）
+
+| 场景 | 正则表达式 |
+|------|------------|
+| 移除无用信息 | `过期\|到期\|剩余\|流量\|官网\|群\|频道\|订阅` |
+| 移除倍率节点 | `[2-9](\\.\\d+)?[xX倍]` |
+| 移除特定地区 | `俄罗斯\|印度\|巴西` |
+
+### 8.2 节点重命名
+
+#### 正则重命名示例
+
+| 原名称 | 正则 | 替换 | 结果 |
+|--------|------|------|------|
+| `香港01` | `香港(\\d+)` | `🇭🇰 HK-$1` | `🇭🇰 HK-01` |
+| `日本 东京 01` | `日本.*?(\\d+)` | `🇯🇵 JP-$1` | `🇯🇵 JP-01` |
+| `[SS]香港节点` | `\\[.*?\\](.*)` | `$1` | `香港节点` |
+
+### 8.3 节点排序
+
+#### 按地区优先级排序
+
+```
+香港,台湾,日本,新加坡,韩国,美国,其他
+```
+
+#### 按延迟排序
+
+使用脚本操作，按节点延迟自动排序。
+
+### 8.4 推荐处理流程
+
+```
+原始订阅
+    ↓
+1. 排除过滤：移除无用节点（官网、群组、过期等）
+    ↓
+2. 正则过滤：保留需要的地区（可选）
+    ↓
+3. 重命名：统一节点名称格式
+    ↓
+4. 添加国旗：Flag 操作
+    ↓
+5. 去重：移除重复节点
+    ↓
+6. 排序：按地区/名称排序
+    ↓
+输出订阅
+```
+
+### 8.5 组合订阅分组策略
+
+创建多个组合订阅，用于不同场景：
+
+| 组合名称 | 过滤规则 | 用途 |
+|----------|----------|------|
+| `全部节点` | 无过滤 | 备用 |
+| `香港专线` | `香港\|HK` | 低延迟、看港剧 |
+| `日本专线` | `日本\|JP` | 动漫、游戏 |
+| `美国专线` | `美国\|US` | ChatGPT、Netflix |
+| `低延迟` | `香港\|台湾\|日本\|新加坡` | 日常使用 |
+| `解锁流媒体` | `解锁\|Netflix\|Disney` | 流媒体专用 |
+
+### 8.6 Clash 分流规则示例
+
+```yaml
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    proxies:
+      - ♻️ 自动选择
+      - 🇭🇰 香港节点
+      - 🇯🇵 日本节点
+      - 🇺🇸 美国节点
+      - DIRECT
+
+  - name: ♻️ 自动选择
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    proxies: []  # 使用全部节点
+
+  - name: 🇭🇰 香港节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    filter: "香港|HK|🇭🇰"
+
+  - name: 🇯🇵 日本节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    filter: "日本|JP|🇯🇵"
+
+  - name: 🇺🇸 美国节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    filter: "美国|US|🇺🇸"
+
+  - name: 🤖 AI 服务
+    type: select
+    proxies:
+      - 🇺🇸 美国节点
+      - 🇯🇵 日本节点
+      - 🚀 节点选择
+
+  - name: 📺 流媒体
+    type: select
+    proxies:
+      - 🇭🇰 香港节点
+      - 🇯🇵 日本节点
+      - 🇺🇸 美国节点
+
+rules:
+  # AI 服务
+  - DOMAIN-SUFFIX,openai.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,anthropic.com,🤖 AI 服务
+  - DOMAIN-SUFFIX,claude.ai,🤖 AI 服务
+  
+  # 流媒体
+  - DOMAIN-SUFFIX,netflix.com,📺 流媒体
+  - DOMAIN-SUFFIX,youtube.com,📺 流媒体
+  - DOMAIN-SUFFIX,spotify.com,📺 流媒体
+  
+  # 社交媒体
+  - DOMAIN-SUFFIX,twitter.com,🚀 节点选择
+  - DOMAIN-SUFFIX,instagram.com,🚀 节点选择
+  - DOMAIN-SUFFIX,facebook.com,🚀 节点选择
+  
+  # 开发工具
+  - DOMAIN-SUFFIX,github.com,🚀 节点选择
+  - DOMAIN-SUFFIX,githubusercontent.com,🚀 节点选择
+  
+  # 国内直连
+  - GEOIP,CN,DIRECT
+  
+  # 默认
+  - MATCH,🚀 节点选择
+```
+
+### 8.7 脚本操作示例
+
+#### 添加节点前缀
+
+```javascript
+function operator(proxies) {
+  return proxies.map(proxy => {
+    proxy.name = `[优化] ${proxy.name}`;
+    return proxy;
+  });
+}
+```
+
+#### 按延迟过滤（移除高延迟节点）
+
+```javascript
+async function operator(proxies, targetPlatform, context) {
+  // 移除名称中包含高延迟标识的节点
+  return proxies.filter(proxy => {
+    return !proxy.name.includes('高延迟') && !proxy.name.includes('慢');
+  });
+}
+```
+
+#### 节点去重（按服务器+端口）
+
+```javascript
+function operator(proxies) {
+  const seen = new Set();
+  return proxies.filter(proxy => {
+    const key = `${proxy.server}:${proxy.port}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+```
+
+---
+
+## 九、Mihomo 分流配置脚本
+
+以下是用于 Sub-Store「Mihomo 配置」类型的完整分流脚本，实现：
+- **Cursor** → 亚洲节点（低延迟）
+- **OpenAI/ChatGPT/Gemini/Claude** → 美国节点
+- **SSH 22 端口** → 直连（不走代理）
+
+### 9.1 完整脚本代码
+
+```javascript
+// Cursor + AI 分流配置脚本
+// 为 Mihomo/Clash Meta 添加分流规则
+
+// 从订阅获取节点（请将 '白月光' 替换为你的订阅名称）
+let proxies = await produceArtifact({
+  type: 'subscription',
+  name: '白月光',
+  platform: 'ClashMeta',
+  produceType: 'internal'
+});
+
+// 获取所有节点名称
+const allProxies = proxies?.map(p => p.name) || [];
+
+// 筛选亚洲节点
+const asiaFilter = /香港|台湾|日本|新加坡|韩国|HK|TW|JP|SG|KR/i;
+const asiaProxies = allProxies.filter(n => asiaFilter.test(n));
+
+// 筛选美国节点
+const usFilter = /美国|US|United States/i;
+const usProxies = allProxies.filter(n => usFilter.test(n));
+
+// 筛选日本节点
+const jpFilter = /日本|JP|Japan|东京|大阪/i;
+const jpProxies = allProxies.filter(n => jpFilter.test(n));
+
+// 打包节点（美国 + 日本）
+const bundleProxies = [...usProxies, ...jpProxies];
+
+// 确保有节点（如果筛选为空则使用 DIRECT）
+if (asiaProxies.length === 0) asiaProxies.push('DIRECT');
+if (usProxies.length === 0) usProxies.push('DIRECT');
+if (jpProxies.length === 0) jpProxies.push('DIRECT');
+if (bundleProxies.length === 0) bundleProxies.push('DIRECT');
+
+// 构建完整的 Mihomo 配置
+const config = {
+  'mixed-port': 7890,
+  'allow-lan': false,
+  mode: 'rule',
+  'log-level': 'info',
+  
+  proxies: proxies,
+  
+  'proxy-groups': [
+    {
+      name: '🚀 节点选择',
+      type: 'select',
+      proxies: ['🌏 亚洲节点', '🇺🇸 美国节点', '🇯🇵 日本节点', '📦 打包节点', 'DIRECT', ...allProxies]
+    },
+    {
+      name: '🌏 亚洲节点',
+      type: 'url-test',
+      url: 'http://www.gstatic.com/generate_204',
+      interval: 300,
+      proxies: asiaProxies
+    },
+    {
+      name: '🇺🇸 美国节点',
+      type: 'url-test',
+      url: 'http://www.gstatic.com/generate_204',
+      interval: 300,
+      proxies: usProxies
+    },
+    {
+      name: '🇯🇵 日本节点',
+      type: 'url-test',
+      url: 'http://www.gstatic.com/generate_204',
+      interval: 300,
+      proxies: jpProxies
+    },
+    {
+      name: '📦 打包节点',
+      type: 'url-test',
+      url: 'http://www.gstatic.com/generate_204',
+      interval: 300,
+      proxies: bundleProxies
+    }
+  ],
+  
+  rules: [
+    // ========== 局域网设备分流（最高优先级）==========
+    // 指定 IP 走特定代理（请根据实际情况修改）
+    // 'SRC-IP-CIDR,192.168.1.100/32,🇺🇸 美国节点',  // 单个设备
+    // 'SRC-IP-CIDR,192.168.1.0/24,🌏 亚洲节点',      // 整个网段
+    
+    // ========== SSH 直连 ==========
+    'DST-PORT,22,DIRECT',
+    
+    // ========== Cursor 走亚洲节点 ==========
+    'DOMAIN-SUFFIX,cursor.sh,🌏 亚洲节点',
+    'DOMAIN-SUFFIX,cursor.so,🌏 亚洲节点',
+    'DOMAIN-SUFFIX,cursorapi.com,🌏 亚洲节点',
+    'DOMAIN-KEYWORD,cursor,🌏 亚洲节点',
+    
+    // ========== OpenAI/ChatGPT 走美国节点 ==========
+    'DOMAIN-SUFFIX,openai.com,🇺🇸 美国节点',
+    'DOMAIN-SUFFIX,chatgpt.com,🇺🇸 美国节点',
+    'DOMAIN-SUFFIX,oaistatic.com,🇺🇸 美国节点',
+    'DOMAIN-SUFFIX,oaiusercontent.com,🇺🇸 美国节点',
+    'DOMAIN-KEYWORD,openai,🇺🇸 美国节点',
+    
+    // ========== Google Gemini 走美国节点 ==========
+    'DOMAIN-SUFFIX,gemini.google.com,🇺🇸 美国节点',
+    'DOMAIN-SUFFIX,generativelanguage.googleapis.com,🇺🇸 美国节点',
+    'DOMAIN-SUFFIX,ai.google.dev,🇺🇸 美国节点',
+    'DOMAIN-SUFFIX,aistudio.google.com,🇺🇸 美国节点',
+    'DOMAIN-KEYWORD,gemini,🇺🇸 美国节点',
+    
+    // ========== Claude 走美国节点 ==========
+    'DOMAIN-SUFFIX,anthropic.com,🇺🇸 美国节点',
+    'DOMAIN-SUFFIX,claude.ai,🇺🇸 美国节点',
+    
+    // ========== 兜底规则 ==========
+    'GEOIP,CN,DIRECT',
+    'MATCH,🚀 节点选择'
+  ]
+};
+
+$content = ProxyUtils.yaml.dump(config);
+```
+
+### 9.2 使用方法
+
+1. 在 Sub-Store 中创建「**Mihomo 配置**」类型的文件
+2. 选择「**脚本操作**」→「**快捷脚本**」
+3. 将上述脚本粘贴到编辑器中
+4. **修改订阅名称**：将 `'白月光'` 替换为你实际的订阅名称
+5. 点击「**即时预览**」验证配置
+6. 点击「**保存**」
+
+### 9.3 分流规则说明
+
+| 规则类型 | 目标 | 代理组 |
+|----------|------|--------|
+| `SRC-IP-CIDR` | 局域网设备（源 IP） | 自定义 |
+| `DST-PORT,22` | SSH 连接 | DIRECT（直连） |
+| `DOMAIN-*,cursor*` | Cursor IDE | 🌏 亚洲节点 |
+| `DOMAIN-*,openai*` | OpenAI/ChatGPT | 🇺🇸 美国节点 |
+| `DOMAIN-*,gemini*` | Google Gemini | 🇺🇸 美国节点 |
+| `DOMAIN-*,claude*` | Anthropic Claude | 🇺🇸 美国节点 |
+| `GEOIP,CN` | 中国 IP | DIRECT（直连） |
+| `MATCH` | 其他流量 | 🚀 节点选择 |
+
+### 9.4 自定义扩展
+
+#### 局域网设备分流（基于源 IP）
+
+```javascript
+// 单个设备走美国节点（/32 表示单个 IP）
+'SRC-IP-CIDR,192.168.1.100/32,🇺🇸 美国节点',
+
+// 单个设备走亚洲节点
+'SRC-IP-CIDR,192.168.1.101/32,🌏 亚洲节点',
+
+// 单个设备直连（不走代理）
+'SRC-IP-CIDR,192.168.1.102/32,DIRECT',
+
+// 整个网段走代理（/24 表示 192.168.1.0-255）
+'SRC-IP-CIDR,192.168.1.0/24,🚀 节点选择',
+
+// 特定网段直连
+'SRC-IP-CIDR,192.168.2.0/24,DIRECT',
+```
+
+> ⚠️ **注意**：
+> - Clash/Mihomo **不支持 MAC 地址规则**，只能用 IP
+> - 建议在路由器上给设备绑定固定 IP（DHCP 静态分配）
+> - 规则按顺序匹配，越靠前优先级越高
+
+#### 添加更多直连端口
+
+```javascript
+// 在 rules 数组开头添加
+'DST-PORT,22,DIRECT',    // SSH
+'DST-PORT,3389,DIRECT',  // RDP 远程桌面
+'DST-PORT,5900,DIRECT',  // VNC
+'DST-PORT,53,DIRECT',    // DNS
+```
+
+#### 添加更多域名规则
+
+```javascript
+// GitHub 走亚洲节点
+'DOMAIN-SUFFIX,github.com,🌏 亚洲节点',
+'DOMAIN-SUFFIX,githubusercontent.com,🌏 亚洲节点',
+
+// Telegram 走美国节点
+'DOMAIN-SUFFIX,telegram.org,🇺🇸 美国节点',
+'DOMAIN-SUFFIX,t.me,🇺🇸 美国节点',
+```
+
+#### 组合规则示例
+
+```javascript
+// 特定设备 + 特定域名 的组合分流
+// 注意：Clash 规则按顺序匹配，先匹配的先生效
+
+rules: [
+  // 1. 设备 192.168.1.100 的所有流量走美国节点
+  'SRC-IP-CIDR,192.168.1.100/32,🇺🇸 美国节点',
+  
+  // 2. 其他设备访问 OpenAI 走美国节点
+  'DOMAIN-SUFFIX,openai.com,🇺🇸 美国节点',
+  
+  // 3. 其他设备访问 Cursor 走亚洲节点
+  'DOMAIN-SUFFIX,cursor.sh,🌏 亚洲节点',
+  
+  // 4. 国内直连
+  'GEOIP,CN,DIRECT',
+  
+  // 5. 其他走节点选择
+  'MATCH,🚀 节点选择'
+]
+```
+
+---
+
+## 十、相关链接
 
 - **项目主页**: https://github.com/sub-store-org/Sub-Store
 - **官方文档**: https://xream.notion.site/Sub-Store-abe6a96944724dc6a36833d5c9ab7c87
