@@ -1,8 +1,8 @@
-# Sub-Store Docker Image
+# Sub-Store Docker Image (带前端)
 # 多阶段构建，减小镜像体积
 
 # ============================================
-# 阶段1：构建阶段
+# 阶段1：构建后端
 # ============================================
 FROM node:20-alpine AS builder
 
@@ -28,7 +28,21 @@ RUN pnpm bundle:esbuild
 RUN pnpm prune --prod
 
 # ============================================
-# 阶段2：运行阶段
+# 阶段2：下载前端
+# ============================================
+FROM alpine:latest AS frontend
+
+RUN apk add --no-cache curl unzip
+
+WORKDIR /frontend
+
+# 下载 Sub-Store 官方前端（从 GitHub Release）
+RUN curl -L -o frontend.zip https://github.com/sub-store-org/Sub-Store-Front-End/releases/latest/download/dist.zip && \
+    unzip frontend.zip && \
+    rm frontend.zip
+
+# ============================================
+# 阶段3：运行阶段
 # ============================================
 FROM node:20-alpine AS runner
 
@@ -54,14 +68,20 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 
+# 从前端阶段复制前端文件
+COPY --from=frontend /frontend/dist ./frontend
+
 # 创建数据目录
 RUN mkdir -p /data && chown -R substore:substore /data /app
 
-# 设置环境变量
+# 设置环境变量（启用前后端合并模式）
 ENV NODE_ENV=production
 ENV SUB_STORE_BACKEND_API_PORT=3000
 ENV SUB_STORE_BACKEND_API_HOST=0.0.0.0
 ENV SUB_STORE_DATA_BASE_PATH=/data
+ENV SUB_STORE_FRONTEND_PATH=/app/frontend
+ENV SUB_STORE_FRONTEND_BACKEND_PATH=/api
+ENV SUB_STORE_BACKEND_MERGE=true
 
 # 切换到非 root 用户
 USER substore
