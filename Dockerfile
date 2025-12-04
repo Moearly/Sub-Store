@@ -24,6 +24,9 @@ RUN pnpm install --no-frozen-lockfile
 # 构建项目
 RUN pnpm bundle:esbuild
 
+# 清理开发依赖，只保留生产依赖
+RUN pnpm prune --prod
+
 # ============================================
 # 阶段2：运行阶段
 # ============================================
@@ -45,9 +48,11 @@ RUN addgroup -g 1001 -S substore && \
 # 设置工作目录
 WORKDIR /app
 
-# 从构建阶段复制构建产物
+# 从构建阶段复制构建产物和运行时依赖
 COPY --from=builder /app/sub-store.min.js ./
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
 
 # 创建数据目录
 RUN mkdir -p /data && chown -R substore:substore /data /app
