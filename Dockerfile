@@ -15,14 +15,11 @@ WORKDIR /app
 # 安装 pnpm
 RUN npm install -g pnpm
 
-# 复制 package 文件
-COPY backend/package.json backend/pnpm-lock.yaml ./
-
-# 安装依赖
-RUN pnpm install --frozen-lockfile || pnpm install
-
-# 复制后端源码
+# 复制整个 backend 目录
 COPY backend/ ./
+
+# 安装依赖（不使用 frozen-lockfile，因为 lock 文件可能不完整）
+RUN pnpm install --no-frozen-lockfile
 
 # 构建项目
 RUN pnpm bundle:esbuild
